@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Exec=@LISTENER_PATH@
+Hidden=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+Name=KB Layout Switch Release
+Comment=Switch Cinnamon keyboard layout on modifier release

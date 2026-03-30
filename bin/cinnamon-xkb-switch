@@ -1,0 +1,207 @@
+#!/usr/bin/env python3
+
+import argparse
+import sys
+from dataclasses import dataclass
+from typing import NoReturn
+
+from gi.repository import Gio, GLib
+
+
+BUS_NAME = "org.Cinnamon"
+OBJECT_PATH = "/org/Cinnamon"
+INTERFACE = "org.Cinnamon"
+
+
+@dataclass(frozen=True)
+class InputSource:
+    source_type: str
+    source_id: str
+    index: int
+    display_name: str
+    short_name: str
+    flag_name: str
+    xkb_id: str
+    xkb_layout: str
+    variant: str
+    preferences: str
+    dupe_id: int
+    current: bool
+
+
+def fail(message: str, exit_code: int = 1) -> NoReturn:
+    print(message, file=sys.stderr)
+    raise SystemExit(exit_code)
+
+
+def build_proxy() -> Gio.DBusProxy:
+    try:
+        return Gio.DBusProxy.new_for_bus_sync(
+            Gio.BusType.SESSION,
+            Gio.DBusProxyFlags.NONE,
+            None,
+            BUS_NAME,
+            OBJECT_PATH,
+            INTERFACE,
+            None,
+        )
+    except GLib.Error as exc:
+        fail(
+            "Cannot connect to Cinnamon session D-Bus API. "
+            "Run this inside the active Cinnamon X11 session. "
+            f"Details: {exc.message}"
+        )
+
+
+def get_sources(proxy: Gio.DBusProxy) -> list[InputSource]:
+    try:
+        payload = proxy.call_sync(
+            "GetInputSources",
+            None,
+            Gio.DBusCallFlags.NONE,
+            -1,
+            None,
+        ).unpack()[0]
+    except GLib.Error as exc:
+        fail(f"Cannot read Cinnamon input sources: {exc.message}")
+
+    sources = [InputSource(*item) for item in payload]
+    if not sources:
+        fail("Cinnamon returned no input sources.")
+    return sources
+
+
+def get_current_source(sources: list[InputSource]) -> InputSource:
+    for source in sources:
+        if source.current:
+            return source
+    fail("Cinnamon did not report a current input source.")
+
+
+def activate_index(proxy: Gio.DBusProxy, index: int) -> None:
+    try:
+        proxy.call_sync(
+            "ActivateInputSourceIndex",
+            GLib.Variant("(i)", (index,)),
+            Gio.DBusCallFlags.NONE,
+            -1,
+            None,
+        )
+    except GLib.Error as exc:
+        fail(f"Cannot activate Cinnamon input source index {index}: {exc.message}")
+
+
+def next_index(sources: list[InputSource], reverse: bool = False) -> int:
+    ordered = sorted(sources, key=lambda source: source.index)
+    current = get_current_source(ordered)
+    current_pos = ordered.index(current)
+
+    if reverse:
+        return ordered[(current_pos - 1) % len(ordered)].index
+    return ordered[(current_pos + 1) % len(ordered)].index
+
+
+def resolve_target(sources: list[InputSource], target: str) -> InputSource:
+    if target.isdigit():
+        index = int(target)
+        for source in sources:
+            if source.index == index:
+                return source
+        fail(f"Input source index {index} does not exist.")
+
+    exact_fields = ("source_id", "xkb_id")
+    for field_name in exact_fields:
+        for source in sources:
+            if getattr(source, field_name) == target:
+                return source
+
+    lowered = target.casefold()
+    matches = []
+    for source in sources:
+        for value in (
+            source.xkb_layout,
+            source.short_name,
+            source.flag_name,
+            source.display_name,
+        ):
+            if value.casefold() == lowered:
+                matches.append(source)
+                break
+
+    if len(matches) == 1:
+        return matches[0]
+
+    if len(matches) > 1:
+        choices = ", ".join(f"{source.index}:{source.xkb_id}" for source in matches)
+        fail(f"Target '{target}' is ambiguous. Use one of: {choices}")
+
+    fail(f"Input source '{target}' was not found.")
+
+
+def print_sources(sources: list[InputSource]) -> None:
+    for source in sorted(sources, key=lambda item: item.index):
+        marker = "*" if source.current else " "
+        label = source.display_name
+        if source.variant:
+            label = f"{label} [{source.variant}]"
+        print(f"{marker} {source.index}\t{source.xkb_layout}\t{source.xkb_id}\t{label}")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Switch Cinnamon input sources through org.Cinnamon D-Bus so the "
+            "panel indicator and real XKB state stay in sync."
+        )
+    )
+    parser.add_argument("-n", "--next", action="store_true", help="Switch to the next input source")
+    parser.add_argument("--prev", action="store_true", help="Switch to the previous input source")
+    parser.add_argument("-s", "--set", metavar="TARGET", help="Switch to input source by index, id, xkb id, or layout")
+    parser.add_argument("-l", "--list", action="store_true", help="List configured Cinnamon input sources")
+    parser.add_argument("-f", "--fancy", action="store_true", help="Print the current source display name")
+    parser.add_argument("-p", "--print", dest="print_current", action="store_true", help="Print the current xkb layout")
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    selected_actions = [
+        args.next,
+        args.prev,
+        args.set is not None,
+        args.list,
+        args.fancy,
+        args.print_current,
+    ]
+    if sum(bool(action) for action in selected_actions) > 1:
+        fail("Use only one action at a time.")
+
+    proxy = build_proxy()
+    sources = get_sources(proxy)
+
+    if args.list:
+        print_sources(sources)
+        return 0
+
+    if args.fancy:
+        print(get_current_source(sources).display_name)
+        return 0
+
+    if args.next:
+        activate_index(proxy, next_index(sources))
+        return 0
+
+    if args.prev:
+        activate_index(proxy, next_index(sources, reverse=True))
+        return 0
+
+    if args.set is not None:
+        activate_index(proxy, resolve_target(sources, args.set).index)
+        return 0
+
+    print(get_current_source(sources).xkb_layout)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
