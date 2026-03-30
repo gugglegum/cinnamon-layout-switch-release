@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Validate Shell Scripts
+        run: |
+          bash -n install.sh
+          bash -n uninstall.sh
+          bash -n bin/kb-layout-switch-release.sh
+
+      - name: Validate Python Helper
+        run: |
+          python3 -m py_compile bin/cinnamon-xkb-switch
