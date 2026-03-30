@@ -1,8 +1,8 @@
 #!/bin/bash
 
+readonly SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 readonly KEYBOARD_NAME="${KB_LAYOUT_SWITCH_KEYBOARD_NAME:-AT Translated Set 2 keyboard}"
 readonly FALLBACK_KEYBOARD_NAME="${KB_LAYOUT_SWITCH_FALLBACK_KEYBOARD_NAME:-Virtual core keyboard}"
-readonly LAYOUT_SWITCH_CMD="${LAYOUT_SWITCH_CMD:-/usr/local/bin/cinnamon-xkb-switch}"
 readonly DEBUG="${KB_LAYOUT_SWITCH_DEBUG:-0}"
 readonly LOCK_FILE="${KB_LAYOUT_SWITCH_LOCK_FILE:-${XDG_RUNTIME_DIR:-/tmp}/kb-layout-switch-release.lock}"
 
@@ -30,6 +30,26 @@ log_debug() {
     if [[ "$DEBUG" == "1" ]]; then
         echo "$*" >&2
     fi
+}
+
+resolve_layout_switch_cmd() {
+    if [[ -n "${LAYOUT_SWITCH_CMD:-}" ]]; then
+        printf '%s\n' "$LAYOUT_SWITCH_CMD"
+        return 0
+    fi
+
+    if [[ -x "$SCRIPT_DIR/cinnamon-xkb-switch" ]]; then
+        printf '%s\n' "$SCRIPT_DIR/cinnamon-xkb-switch"
+        return 0
+    fi
+
+    if command -v cinnamon-xkb-switch >/dev/null 2>&1; then
+        command -v cinnamon-xkb-switch
+        return 0
+    fi
+
+    echo "Cannot find cinnamon-xkb-switch. Set LAYOUT_SWITCH_CMD or install it next to this script." >&2
+    return 1
 }
 
 acquire_lock() {
@@ -82,6 +102,7 @@ check_sequence() {
     done
 }
 
+readonly LAYOUT_SWITCH_CMD="$(resolve_layout_switch_cmd)" || exit 1
 readonly KEYBOARD_ID="$(resolve_keyboard_id)" || exit 1
 acquire_lock
 log_debug "Listening on keyboard id $KEYBOARD_ID"
