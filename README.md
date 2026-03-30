@@ -1,5 +1,8 @@
 # Cinnamon Layout Switch On Release
 
+[![License: MIT](https://img.shields.io/github/license/gugglegum/cinnamon-layout-switch-release)](https://github.com/gugglegum/cinnamon-layout-switch-release/blob/master/LICENSE)
+[![CI](https://github.com/gugglegum/cinnamon-layout-switch-release/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/gugglegum/cinnamon-layout-switch-release/actions/workflows/ci.yml)
+
 Скрипты для Linux с окружением рабочего стола Cinnamon, которые позволяют переключать раскладку клавиатуры не в момент нажатия `Alt+Shift` или `Ctrl+Shift`, а в момент отпускания клавиш.
 
 ## Что это решает
