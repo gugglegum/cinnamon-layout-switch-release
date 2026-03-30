@@ -95,7 +95,7 @@
 - `bin/cinnamon-xkb-switch` — CLI для чтения и переключения раскладки через D-Bus Cinnamon.
 - `bin/kb-layout-switch-release.sh` — listener, который отслеживает `Alt+Shift` и `Ctrl+Shift` на отпускании.
 - `autostart/kb-layout-switch-release.desktop.in` — шаблон автозапуска.
-- `install.sh` — установка в `/usr/local/bin` и создание файла автозапуска в домашней директории пользователя.
+- `install.sh` — установка в `~/.local/bin` по умолчанию и создание файла автозапуска в домашней директории пользователя.
 - `uninstall.sh` — удаление установленных файлов.
 
 ## Требования
@@ -122,9 +122,11 @@ chmod +x install.sh
 
 Скрипт установит:
 
-- `/usr/local/bin/cinnamon-xkb-switch`
-- `/usr/local/bin/kb-layout-switch-release.sh`
+- `~/.local/bin/cinnamon-xkb-switch`
+- `~/.local/bin/kb-layout-switch-release.sh`
 - `~/.config/autostart/kb-layout-switch-release.desktop`
+
+В этом режиме root-права не нужны.
 
 Если нужно указать другого пользователя для автозапуска:
 
@@ -132,10 +134,24 @@ chmod +x install.sh
 TARGET_USER=paul ./install.sh
 ```
 
-Если нужно установить не в `/usr/local/bin`, а в другой каталог:
+Если хочется выбрать путь установки интерактивно:
 
 ```bash
-INSTALL_BIN_DIR=/some/path ./install.sh
+./install.sh --interactive
+```
+
+Если нужна системная установка в `/usr/local/bin`:
+
+```bash
+./install.sh --system
+```
+
+В этом режиме скрипт может запросить `sudo`, потому что запись в `/usr/local/bin` требует повышенных прав.
+
+Если нужно установить в произвольный каталог:
+
+```bash
+./install.sh --bin-dir /some/path
 ```
 
 ## Рекомендуемая настройка Cinnamon
@@ -154,19 +170,19 @@ gsettings set org.cinnamon.desktop.keybindings.wm switch-input-source-backward "
 Если не хочется перелогиниваться, listener можно запустить вручную:
 
 ```bash
-/usr/local/bin/kb-layout-switch-release.sh
+$HOME/.local/bin/kb-layout-switch-release.sh
 ```
 
 Для отладки:
 
 ```bash
-KB_LAYOUT_SWITCH_DEBUG=1 /usr/local/bin/kb-layout-switch-release.sh
+KB_LAYOUT_SWITCH_DEBUG=1 $HOME/.local/bin/kb-layout-switch-release.sh
 ```
 
 Можно явно указать конкретную клавиатуру:
 
 ```bash
-KB_LAYOUT_SWITCH_KEYBOARD_ID=8 /usr/local/bin/kb-layout-switch-release.sh
+KB_LAYOUT_SWITCH_KEYBOARD_ID=8 $HOME/.local/bin/kb-layout-switch-release.sh
 ```
 
 В тестовой виртуальной машине VMware во время отладки значение `KEYBOARD_ID=8` указывало на клавиатуру `AT Translated Set 2 keyboard`. Это удобный пример, но не универсальное правило: идентификаторы `xinput` зависят от конкретной системы, набора устройств и иногда могут меняться между загрузками.
@@ -204,14 +220,16 @@ xinput list --id-only "Virtual core keyboard"
 После этого найденный `id` можно передать так:
 
 ```bash
-KB_LAYOUT_SWITCH_KEYBOARD_ID=<ваш_id> /usr/local/bin/kb-layout-switch-release.sh
+KB_LAYOUT_SWITCH_KEYBOARD_ID=<ваш_id> $HOME/.local/bin/kb-layout-switch-release.sh
 ```
 
 или имя устройства:
 
 ```bash
-KB_LAYOUT_SWITCH_KEYBOARD_NAME="AT Translated Set 2 keyboard" /usr/local/bin/kb-layout-switch-release.sh
+KB_LAYOUT_SWITCH_KEYBOARD_NAME="AT Translated Set 2 keyboard" $HOME/.local/bin/kb-layout-switch-release.sh
 ```
+
+Если вы устанавливали проект через `./install.sh --system`, используйте путь `/usr/local/bin/...` вместо `$HOME/.local/bin/...`.
 
 ## Использование `cinnamon-xkb-switch`
 
@@ -248,6 +266,12 @@ cinnamon-xkb-switch -s 0
 ```bash
 chmod +x uninstall.sh
 ./uninstall.sh
+```
+
+Для удаления системной установки:
+
+```bash
+./uninstall.sh --system
 ```
 
 ## Лицензия
