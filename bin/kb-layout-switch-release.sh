@@ -1,6 +1,19 @@
 #!/bin/bash
 
+: "${HOME:?HOME is not set}"
+
 readonly SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+readonly CONFIG_FILE="${KB_LAYOUT_SWITCH_CONFIG:-$HOME/.config/cinnamon-layout-switch-release.conf}"
+
+load_config() {
+    if [[ -f "$CONFIG_FILE" ]]; then
+        # shellcheck disable=SC1090
+        source "$CONFIG_FILE"
+    fi
+}
+
+load_config
+
 readonly KEYBOARD_NAME="${KB_LAYOUT_SWITCH_KEYBOARD_NAME:-AT Translated Set 2 keyboard}"
 readonly FALLBACK_KEYBOARD_NAME="${KB_LAYOUT_SWITCH_FALLBACK_KEYBOARD_NAME:-Virtual core keyboard}"
 readonly DEBUG="${KB_LAYOUT_SWITCH_DEBUG:-0}"
@@ -105,6 +118,7 @@ check_sequence() {
 readonly LAYOUT_SWITCH_CMD="$(resolve_layout_switch_cmd)" || exit 1
 readonly KEYBOARD_ID="$(resolve_keyboard_id)" || exit 1
 acquire_lock
+log_debug "Using config file $CONFIG_FILE"
 log_debug "Listening on keyboard id $KEYBOARD_ID"
 
 while read -r line; do

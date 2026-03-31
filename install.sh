@@ -6,6 +6,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 HELPER_SRC="$SCRIPT_DIR/bin/cinnamon-xkb-switch"
 LISTENER_SRC="$SCRIPT_DIR/bin/kb-layout-switch-release.sh"
 DESKTOP_TEMPLATE="$SCRIPT_DIR/autostart/kb-layout-switch-release.desktop.in"
+CONFIG_TEMPLATE="$SCRIPT_DIR/config/cinnamon-layout-switch-release.conf"
 
 run_as_root() {
     if [ "$(id -u)" -eq 0 ]; then
@@ -155,6 +156,8 @@ fi
 
 HELPER_DST="$BIN_DIR/cinnamon-xkb-switch"
 LISTENER_DST="$BIN_DIR/kb-layout-switch-release.sh"
+CONFIG_DIR="$TARGET_HOME/.config"
+CONFIG_FILE="$CONFIG_DIR/cinnamon-layout-switch-release.conf"
 AUTOSTART_DIR="$TARGET_HOME/.config/autostart"
 AUTOSTART_FILE="$AUTOSTART_DIR/kb-layout-switch-release.desktop"
 TMP_DESKTOP=$(mktemp)
@@ -164,6 +167,14 @@ install_dir "$BIN_DIR"
 install_file "$BIN_DIR" -m 755 "$HELPER_SRC" "$HELPER_DST"
 install_file "$BIN_DIR" -m 755 "$LISTENER_SRC" "$LISTENER_DST"
 
+install_dir "$CONFIG_DIR"
+if [ -e "$CONFIG_FILE" ]; then
+    CONFIG_ACTION="Preserved existing config"
+else
+    install_file "$CONFIG_FILE" -m 644 "$CONFIG_TEMPLATE" "$CONFIG_FILE"
+    CONFIG_ACTION="Created config"
+fi
+
 install_dir "$AUTOSTART_DIR"
 sed "s|@LISTENER_PATH@|$LISTENER_DST|g" "$DESKTOP_TEMPLATE" > "$TMP_DESKTOP"
 install -m 644 "$TMP_DESKTOP" "$AUTOSTART_FILE"
@@ -172,27 +183,32 @@ if [ "$(id -u)" -eq 0 ]; then
     if path_is_under_target_home "$BIN_DIR"; then
         chown "$TARGET_USER:$TARGET_USER" "$BIN_DIR" "$HELPER_DST" "$LISTENER_DST"
     fi
-    chown "$TARGET_USER:$TARGET_USER" "$AUTOSTART_DIR" "$AUTOSTART_FILE"
+    chown "$TARGET_USER:$TARGET_USER" "$CONFIG_DIR" "$CONFIG_FILE" "$AUTOSTART_DIR" "$AUTOSTART_FILE"
 fi
 
 cat <<EOF
 Installed:
   $HELPER_DST
   $LISTENER_DST
+  $CONFIG_FILE
   $AUTOSTART_FILE
+Config status:
+  $CONFIG_ACTION
 
 Recommended next steps:
   1. Disable Cinnamon built-in layout switching shortcuts if you want release-based switching only:
      gsettings set org.cinnamon.desktop.keybindings.wm switch-input-source "[]"
      gsettings set org.cinnamon.desktop.keybindings.wm switch-input-source-backward "[]"
   2. Make sure you are on Cinnamon X11, not Wayland.
-  3. Log out and log in again, or start the listener manually:
+  3. If keyboard auto-detection does not work, edit:
+     $CONFIG_FILE
+  4. Log out and log in again, or start the listener manually:
      $LISTENER_DST
 EOF
 
 if [ "$BIN_DIR" = "$DEFAULT_USER_BIN" ]; then
     cat <<EOF
-  4. If "$DEFAULT_USER_BIN" is not yet in your PATH for the current shell, log in again before using:
+  5. If "$DEFAULT_USER_BIN" is not yet in your PATH for the current shell, log in again before using:
      $HELPER_DST
 EOF
 fi
