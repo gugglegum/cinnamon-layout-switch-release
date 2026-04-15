@@ -1,132 +1,134 @@
 # Cinnamon Layout Switch On Release
 
+[English](README.md) | [Русский](README_RU.md)
+
 [![License: MIT](https://img.shields.io/github/license/gugglegum/cinnamon-layout-switch-release)](https://github.com/gugglegum/cinnamon-layout-switch-release/blob/master/LICENSE)
 [![CI](https://github.com/gugglegum/cinnamon-layout-switch-release/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/gugglegum/cinnamon-layout-switch-release/actions/workflows/ci.yml)
 
-Скрипты для Linux с окружением рабочего стола Cinnamon, которые позволяют переключать раскладку клавиатуры не в момент нажатия `Alt+Shift` или `Ctrl+Shift`, а в момент отпускания клавиш.
+Scripts for Linux systems running the Cinnamon desktop environment that switch the keyboard layout not when `Alt+Shift` or `Ctrl+Shift` is pressed, but when the keys are released.
 
-## Что это решает
+## What Problem This Solves
 
-В стандартной схеме переключения раскладки на Cinnamon/X11 комбинации вроде `Alt+Shift` обычно обрабатываются самим XKB. Это неудобно, если те же модификаторы участвуют в других горячих клавишах, например:
+In the standard Cinnamon/X11 layout-switching scheme, combinations such as `Alt+Shift` are usually handled by XKB itself. This is inconvenient when the same modifiers are also part of other shortcuts, for example:
 
 - `Alt+Shift+Tab`
-- `Alt+Shift` + пользовательские хоткеи в IDE
-- `Ctrl+Shift` + действия в терминале, редакторе или браузере
+- `Alt+Shift` combined with custom IDE shortcuts
+- `Ctrl+Shift` actions in the terminal, editor, or browser
 
-На старых X11/XKB-схемах проблема обычно проявлялась как прямой конфликт с такими хоткеями: переключение раскладки срабатывало на нажатии и могло перехватывать комбинацию раньше, чем приложение успевало её обработать.
+In older X11/XKB setups, the main problem was a direct conflict with such shortcuts: layout switching fired on key press and could intercept the combination before the application had a chance to handle it.
 
-На Linux Mint 22.3 / Cinnamon 6.6.x поведение, по наблюдениям, изменилось. Стандартный `Alt+Shift` уже не обязательно ломает сочетания вроде `Alt+Shift+Tab` так, как это происходило раньше. Однако вместо этого проявилась другая практическая проблема: при быстром нажатии и отпускании `Alt+Shift` переключение срабатывает нестабильно. Короткий быстрый tap может быть проигнорирован, тогда как более длинное удержание клавиш обычно срабатывает надёжнее.
+On Linux Mint 22.3 / Cinnamon 6.6.x, the behavior appears to have changed. The built-in `Alt+Shift` switcher no longer necessarily breaks combinations such as `Alt+Shift+Tab` the way it used to. However, a different practical problem shows up instead: when `Alt+Shift` is tapped quickly, switching can become unreliable. A very short tap may be ignored, while holding the keys slightly longer usually works more reliably.
 
-Есть и ещё один наблюдаемый эффект штатного `Alt+Shift` в Mint 22.3: в момент переключения активное окно или активное поле ввода может на долю секунды терять фокус. Во многих приложениях этот фокус затем восстанавливается сам, но не во всех. Например, в `Nemo` и `Firefox` это может быть заметно по кратковременному исчезновению активной рамки у поля ввода, а в `VS Code` или `Mattermost` фокус, по наблюдениям, иногда не возвращается автоматически вовсе.
+There is also another observed effect of the built-in `Alt+Shift` behavior in Mint 22.3: during switching, the active window or active input field can briefly lose focus. In many applications the focus is restored automatically, but not in all of them. For example, in `Nemo` and `Firefox` this can be visible as a brief loss of the active input outline, while in `VS Code` or `Mattermost` focus may sometimes fail to return at all.
 
-На Linux Mint 22.3 / Cinnamon 6.6.x всплывает и дополнительная проблема: если пытаться переключать раскладку внешними низкоуровневыми командами в обход самого Cinnamon, можно получить рассинхрон между реальным состоянием раскладки и апплетом в панели. Внешне это выглядит так:
+On Linux Mint 22.3 / Cinnamon 6.6.x there is an additional problem: if you try to switch layouts with external low-level commands outside Cinnamon itself, you can end up with desynchronization between the actual layout state and the panel applet. In practice this looks like:
 
-- фактический ввод уже идёт в одной раскладке, а флаг в панели показывает другую;
-- переключение начинает срабатывать нестабильно;
-- индикатор и реальная раскладка начинают жить отдельно.
+- text input is already using one layout while the panel flag shows another one;
+- switching starts behaving inconsistently;
+- the indicator and the real layout state drift apart.
 
-Поэтому этот репозиторий полезен не только как способ перенести переключение на отпускание, но и как способ сделать его предсказуемым и стабильным именно на современных версиях Cinnamon, не ломая синхронизацию с панелью.
+Because of that, this repository is useful not only as a way to move switching to key release, but also as a way to keep switching predictable and stable on modern Cinnamon versions without breaking panel synchronization.
 
-## В чём суть решения
+## How It Works
 
-Решение состоит из двух частей.
+The solution has two parts.
 
-### 1. CLI-переключатель `cinnamon-xkb-switch`
+### 1. `cinnamon-xkb-switch` CLI helper
 
-Это маленький Python-скрипт, который переключает раскладку не через прямое изменение XKB/IBus, а через D-Bus API самого Cinnamon:
+This is a small Python script that switches the layout not by changing XKB or IBus directly, but through Cinnamon's own D-Bus API:
 
 - `org.Cinnamon.GetInputSources`
 - `org.Cinnamon.ActivateInputSourceIndex`
 
-То есть раскладка меняется тем же верхнеуровневым способом, которым её меняет сам Cinnamon. Благодаря этому:
+In other words, the layout is changed through the same high-level mechanism used by Cinnamon itself. This means:
 
-- обновляется реальная раскладка;
-- обновляется индикатор в панели;
-- не возникает рассинхрон между Cinnamon и XKB.
+- the actual layout changes correctly;
+- the panel indicator updates too;
+- Cinnamon and XKB do not drift out of sync.
 
-### 2. Listener `kb-layout-switch-release.sh`
+### 2. `kb-layout-switch-release.sh` listener
 
-Это bash-скрипт, который слушает `xinput test`, отслеживает последовательности нажатия и отпускания модификаторов и только на отпускании вызывает `cinnamon-xkb-switch -n`.
+This Bash script listens to `xinput test`, tracks modifier key press and release sequences, and only calls `cinnamon-xkb-switch -n` on key release.
 
-Поддерживаются последовательности:
+Supported sequences:
 
 - `Alt+Shift`
 - `Ctrl+Shift`
 
-и в обоих порядках нажатия и отпускания.
+in both possible press and release orders.
 
-Таким образом:
+As a result:
 
-- хоткей с модификаторами может завершиться полностью;
-- раскладка переключается только после отпускания;
-- конфликт со многими `Alt+Shift+...` и `Ctrl+Shift+...` сочетаниями исчезает или резко уменьшается.
+- the shortcut can finish cleanly first;
+- the layout changes only after key release;
+- conflicts with many `Alt+Shift+...` and `Ctrl+Shift+...` combinations disappear or become much less noticeable.
 
-## Для каких систем это актуально
+## What Systems This Is For
 
-Нужно различать две вещи:
+Two different things should be distinguished:
 
-- сама идея переключения раскладки на отпускании модификаторов актуальна для многих X11-систем;
-- конкретная реализация из этого репозитория уже привязана к современному Cinnamon, потому что использует его D-Bus API для безопасного переключения раскладки без рассинхрона.
+- the general idea of switching on modifier release is useful for many X11 systems;
+- this particular implementation is already tied to modern Cinnamon because it uses Cinnamon's D-Bus API to switch layouts safely without desynchronization.
 
-Точно протестировано на:
+Tested directly on:
 
 - Linux Mint 22.3 Zena
 - Cinnamon 6.6.4
 - X11
 
-Эта реализация рассчитана на системы, где одновременно выполняются условия:
+This implementation is intended for systems where all of the following are true:
 
-- используется Cinnamon 6.6 или новее;
-- используется X11, а не Wayland;
-- в сессионном D-Bus доступен интерфейс `org.Cinnamon` с методами `GetInputSources` и `ActivateInputSourceIndex`;
-- переключение раскладки через штатный `Alt+Shift` или `Ctrl+Shift` конфликтует с другими хоткеями.
+- Cinnamon 6.6 or newer is used;
+- the session is X11, not Wayland;
+- the session D-Bus provides `org.Cinnamon` with `GetInputSources` and `ActivateInputSourceIndex`;
+- the built-in `Alt+Shift` or `Ctrl+Shift` layout switching conflicts with other shortcuts or behaves unreliably.
 
-Поэтому проект не ограничен только Linux Mint как дистрибутивом. Он должен быть применим и в других системах, где есть такой же Cinnamon и X11. С высокой вероятностью это может быть полезно для:
+So the project is not limited strictly to Linux Mint as a distribution. It should also apply to other systems using the same Cinnamon stack on X11. It is likely useful on:
 
-- LMDE с Cinnamon;
-- Ubuntu Cinnamon;
-- Fedora Cinnamon Spin;
-- Arch Linux / Manjaro с Cinnamon.
+- LMDE with Cinnamon
+- Ubuntu Cinnamon
+- Fedora Cinnamon Spin
+- Arch Linux / Manjaro with Cinnamon
 
-Но это уже не прямой результат тестирования, а вывод из того, как устроен сам Cinnamon. На других дистрибутивах нужно проверить наличие того же D-Bus API и работу под X11.
+That is an inference from how Cinnamon works, not a claim of direct testing on all of those systems. On other distributions, you should verify that the same D-Bus API is present and that the session is X11.
 
-Для Linux Mint это практически означает следующее:
+For Linux Mint specifically, this means:
 
-- Linux Mint 22.3 и новее с Cinnamon 6.6+ подходят для этой реализации;
-- Linux Mint 22.2 и более ранние версии с более старым Cinnamon, вероятно, потребуют другого backend-подхода.
+- Linux Mint 22.3 and newer with Cinnamon 6.6+ are suitable for this implementation;
+- Linux Mint 22.2 and older with older Cinnamon versions will probably need a different backend approach.
 
-Если вам нужно более общее X11-решение, не завязанное на Cinnamon D-Bus, используйте отдельный репозиторий:
+If you need a more general X11 solution that is not tied to Cinnamon D-Bus, use the separate repository:
 
 <https://github.com/gugglegum/x11-layout-switch-release>
 
-Он лучше подходит в случаях, когда:
+That project is a better fit when:
 
-- у вас X11-сессия, но не Cinnamon, а MATE, Xfce, LXDE, Openbox или другое окружение;
-- у вас более старый Cinnamon, где ещё нет нужного `org.Cinnamon` API;
-- вам нужен более общий XKB-подход без привязки к Cinnamon input sources;
-- вы хотите использовать release-based переключение на системах, где раскладка в основном живёт в XKB и не синхронизируется через Cinnamon.
+- you are on X11 but not on Cinnamon, for example MATE, Xfce, LXDE, Openbox, or another desktop environment;
+- you have an older Cinnamon version that does not provide the required `org.Cinnamon` API yet;
+- you need a more general XKB-based approach without Cinnamon input sources;
+- you want release-based switching on systems where layout state mostly lives in XKB rather than in Cinnamon.
 
-## Когда это не поможет
+## When This Will Not Help
 
-Решение не рассчитано на:
+This solution is not intended for:
 
-- Wayland-сессии;
-- GNOME Shell, KDE Plasma, Xfce, MATE и другие окружения без `org.Cinnamon`;
-- системы, где раскладка переключается не через Cinnamon input sources;
-- сценарии, где пользователь хочет использовать именно штатный XKB-переключатель без пользовательских скриптов.
+- Wayland sessions;
+- GNOME Shell, KDE Plasma, Xfce, MATE, and other environments that do not provide `org.Cinnamon`;
+- systems where layout switching is not managed through Cinnamon input sources;
+- scenarios where the user wants to keep using the stock XKB layout switcher without custom scripts.
 
-## Содержимое репозитория
+## Repository Contents
 
-- `bin/cinnamon-xkb-switch` — CLI для чтения и переключения раскладки через D-Bus Cinnamon.
-- `bin/kb-layout-switch-release.sh` — listener, который отслеживает `Alt+Shift` и `Ctrl+Shift` на отпускании.
-- `config/cinnamon-layout-switch-release.conf` — шаблон пользовательского конфига для listener.
-- `autostart/kb-layout-switch-release.desktop.in` — шаблон автозапуска.
-- `install.sh` — установка в `~/.local/bin` по умолчанию и создание автозапуска в домашней директории пользователя.
-- `uninstall.sh` — удаление установленных файлов.
+- `bin/cinnamon-xkb-switch` — CLI tool for reading and switching the layout through Cinnamon D-Bus.
+- `bin/kb-layout-switch-release.sh` — listener that reacts to `Alt+Shift` and `Ctrl+Shift` on key release.
+- `config/cinnamon-layout-switch-release.conf` — template for the per-user listener config file.
+- `autostart/kb-layout-switch-release.desktop.in` — autostart template.
+- `install.sh` — installs into `~/.local/bin` by default and creates autostart files in the user's home directory.
+- `uninstall.sh` — removes installed files.
 
-Listener по умолчанию ищет `cinnamon-xkb-switch` рядом с собой в том же каталоге. При необходимости путь можно переопределить через `LAYOUT_SWITCH_CMD` в конфиге.
+By default, the listener looks for `cinnamon-xkb-switch` next to itself in the same directory. If needed, the path can be overridden with `LAYOUT_SWITCH_CMD` in the config file.
 
-## Требования
+## Requirements
 
 - Cinnamon
 - X11
@@ -135,209 +137,209 @@ Listener по умолчанию ищет `cinnamon-xkb-switch` рядом с с
 - `xinput`
 - `bash`
 - `flock`
-- доступ к пользовательской сессии D-Bus
+- access to the user's session D-Bus
 
-На Linux Mint всё это обычно уже есть, кроме разве что нестандартных минимальных установок.
+On Linux Mint, all of this is usually already present unless it is a very minimal custom setup.
 
-## Установка
+## Installation
 
-Ниже основной сценарий установки.
+Below is the main installation flow.
 
-### Шаг 1. Убедитесь, что выполнены требования
+### Step 1. Make sure the requirements are present
 
-Нужны Cinnamon, X11, `python3`, `python3-gi`, `xinput`, `bash`, `flock` и доступ к пользовательской сессии D-Bus.
+You need Cinnamon, X11, `python3`, `python3-gi`, `xinput`, `bash`, `flock`, and access to the user session D-Bus.
 
-### Шаг 2. Запустите установщик
+### Step 2. Run the installer
 
-Из корня репозитория:
+From the repository root:
 
 ```bash
 chmod +x install.sh
 ./install.sh
 ```
 
-При установке по умолчанию скрипт создаст:
+With the default user-local installation, this creates:
 
 - `~/.local/bin/cinnamon-xkb-switch`
 - `~/.local/bin/kb-layout-switch-release.sh`
 - `~/.config/cinnamon-layout-switch-release.conf`
 - `~/.config/autostart/kb-layout-switch-release.desktop`
 
-В этом режиме root-права не нужны. Если конфиг уже существует, установщик не перезапишет его.
+No root privileges are needed in this mode. If the config file already exists, the installer preserves it.
 
-Если нужно указать другого пользователя для автозапуска:
+If you need to target a different user for autostart:
 
 ```bash
 TARGET_USER=paul ./install.sh
 ```
 
-Если хочется выбрать путь установки интерактивно:
+If you want an interactive install target selection:
 
 ```bash
 ./install.sh --interactive
 ```
 
-Если нужна системная установка в `/usr/local/bin`:
+If you want a system-wide install into `/usr/local/bin`:
 
 ```bash
 ./install.sh --system
 ```
 
-Если нужно установить в произвольный каталог:
+If you want to install into a custom directory:
 
 ```bash
 ./install.sh --bin-dir /some/path
 ```
 
-`--system` обычно потребует `sudo`. `--bin-dir` для пути внутри домашней директории обычно не требует root-прав. Если указать путь вне домашней директории, установка может потребовать `sudo`.
+`--system` will usually require `sudo`. `--bin-dir` normally does not require root if the path is inside the user's home directory. If you choose a location outside the home directory, root privileges may be required.
 
-### Шаг 3. Отключите штатное переключение Cinnamon
+### Step 3. Disable Cinnamon's built-in layout switching
 
-Если вы хотите, чтобы раскладку переключал только этот listener, а не встроенные горячие клавиши Cinnamon, штатные сочетания лучше отключить:
+If you want layout switching to be handled only by this listener and not by Cinnamon's built-in shortcuts, it is best to disable the standard bindings:
 
 ```bash
 gsettings set org.cinnamon.desktop.keybindings.wm switch-input-source "[]"
 gsettings set org.cinnamon.desktop.keybindings.wm switch-input-source-backward "[]"
 ```
 
-Также не стоит одновременно включать XKB-опции вроде `grp:alt_shift_toggle`, иначе получится двойное переключение.
+It is also best not to keep XKB options such as `grp:alt_shift_toggle` enabled at the same time, otherwise you may get double switching.
 
-### Шаг 4. Перелогиньтесь или запустите listener вручную
+### Step 4. Log out and back in, or start the listener manually
 
-После установки можно просто выйти из сеанса и войти снова. Автозапуск поднимет listener сам.
+After installation, you can simply log out and back in. The autostart entry will launch the listener automatically.
 
-Если не хочется ждать, запустите listener вручную:
+If you do not want to wait, start it manually:
 
 ```bash
 $HOME/.local/bin/kb-layout-switch-release.sh
 ```
 
-Если вы устанавливали через `--system` или `--bin-dir`, используйте путь к listener'у из вывода `install.sh`.
+If you installed with `--system` or `--bin-dir`, use the listener path printed by `install.sh`.
 
-### Шаг 5. Если автоопределение клавиатуры не сработало, поправьте конфиг
+### Step 5. If automatic keyboard detection fails, edit the config
 
-Файл `~/.config/cinnamon-layout-switch-release.conf` создаётся автоматически при установке. Listener читает его и при ручном запуске, и при запуске через автозагрузку.
+The file `~/.config/cinnamon-layout-switch-release.conf` is created automatically during installation. The listener reads it both during manual startup and when started from autostart.
 
-Если раскладка не переключается, сначала найдите нужный `keyboard id`:
+If layout switching does not work, first find the correct keyboard ID:
 
 ```bash
 xinput list --short
 ```
 
-Потом откройте конфиг и укажите, например:
+Then open the config file and set, for example:
 
 ```bash
 KB_LAYOUT_SWITCH_KEYBOARD_ID=8
 ```
 
-После правки перезапустите listener или просто перелогиньтесь.
+After editing the config, restart the listener or simply log out and back in.
 
-## Что делает install.sh
+## What `install.sh` Does
 
-- копирует `cinnamon-xkb-switch`
-- копирует listener
-- создаёт конфигурационный файл, если его ещё нет
-- создаёт `.desktop` для автозапуска
-- сохраняет существующий конфиг при повторной установке
+- installs `cinnamon-xkb-switch`
+- installs the listener
+- creates the config file if it does not exist yet
+- creates the `.desktop` autostart entry
+- preserves an existing config file on repeated installs
 
-## Рекомендуемая проверка после установки
+## Recommended Checks After Installation
 
-Полезно убедиться, что:
+It is useful to confirm that:
 
-- `gsettings get org.cinnamon.desktop.keybindings.wm switch-input-source` возвращает `[]`
-- `gsettings get org.cinnamon.desktop.keybindings.wm switch-input-source-backward` возвращает `[]`
-- `gsettings get org.cinnamon.desktop.input-sources xkb-options` не содержит `grp:alt_shift_toggle`
-- сеанс действительно X11, а не Wayland
+- `gsettings get org.cinnamon.desktop.keybindings.wm switch-input-source` returns `[]`
+- `gsettings get org.cinnamon.desktop.keybindings.wm switch-input-source-backward` returns `[]`
+- `gsettings get org.cinnamon.desktop.input-sources xkb-options` does not contain `grp:alt_shift_toggle`
+- the current session is really X11 and not Wayland
 
-## Ручной запуск
+## Manual Start
 
-Если не хочется перелогиниваться, listener можно запустить вручную:
+If you do not want to log out, you can start the listener manually:
 
 ```bash
 $HOME/.local/bin/kb-layout-switch-release.sh
 ```
 
-Если вы устанавливали через `--system` или `--bin-dir`, используйте путь к listener'у из вывода `install.sh`.
+If you installed with `--system` or `--bin-dir`, use the listener path printed by `install.sh`.
 
-Для отладки:
+For debugging:
 
 ```bash
 KB_LAYOUT_SWITCH_DEBUG=1 $HOME/.local/bin/kb-layout-switch-release.sh
 ```
 
-Для временной ручной проверки можно явно указать конкретную клавиатуру:
+For a temporary manual test, you can point it to a specific keyboard explicitly:
 
 ```bash
 KB_LAYOUT_SWITCH_KEYBOARD_ID=8 $HOME/.local/bin/kb-layout-switch-release.sh
 ```
 
-В тестовой виртуальной машине VMware во время отладки значение `KEYBOARD_ID=8` указывало на клавиатуру `AT Translated Set 2 keyboard`. Это удобный пример, но не универсальное правило: идентификаторы `xinput` зависят от конкретной системы, набора устройств и иногда могут меняться между загрузками.
+During debugging in the VMware test VM, `KEYBOARD_ID=8` pointed to the `AT Translated Set 2 keyboard`. This is a useful example, but not a universal rule: `xinput` IDs depend on the exact system, attached devices, and can sometimes change between boots.
 
-В самой репозиторной версии скрипта `ID=8` не захардкожен. Скрипт сначала пытается найти клавиатуру по имени, а переменная `KB_LAYOUT_SWITCH_KEYBOARD_ID` нужна как ручное переопределение для нестандартных случаев или отладки.
+The repository version of the script does not hardcode `ID=8`. It first tries to find the keyboard by name, and `KB_LAYOUT_SWITCH_KEYBOARD_ID` exists only as a manual override for unusual cases or debugging.
 
-## Настройка клавиатуры
+## Keyboard Configuration
 
-По умолчанию listener пытается найти клавиатуру так:
+By default, the listener tries to find the keyboard in this order:
 
-1. через `KB_LAYOUT_SWITCH_KEYBOARD_ID`, если он задан
-2. по имени `AT Translated Set 2 keyboard`
-3. по fallback-имени `Virtual core keyboard`
+1. `KB_LAYOUT_SWITCH_KEYBOARD_ID`, if explicitly set
+2. `AT Translated Set 2 keyboard`
+3. fallback to `Virtual core keyboard`
 
-В виртуальных машинах идентификатор клавиатуры часто бывает небольшим числом вроде `8`, но это не универсальное правило. На другой системе `id` может быть другим.
+In virtual machines, the keyboard ID is often a small number such as `8`, but that is only an example. On another system the ID can be different.
 
-### Как определить свой идентификатор клавиатуры
+### How To Find Your Keyboard ID
 
-Сначала выведите список устройств:
+First, list the available devices:
 
 ```bash
 xinput list --short
 ```
 
-Обычно вы увидите что-то вроде:
+You will often see something like:
 
 ```text
 AT Translated Set 2 keyboard    id=8
 ```
 
-или другое имя клавиатуры и другой `id`.
+or some other keyboard name and another ID.
 
-Если нужное имя уже известно, можно получить только его идентификатор:
+If you already know the device name, you can query only its ID:
 
 ```bash
 xinput list --id-only "AT Translated Set 2 keyboard"
 ```
 
-Если хочется слушать не конкретную физическую клавиатуру, а мастер-клавиатуру X11 целиком, можно посмотреть и её:
+If you want to listen to the X11 master keyboard rather than to one physical keyboard device, you can also inspect:
 
 ```bash
 xinput list --id-only "Virtual core keyboard"
 ```
 
-Для постоянной настройки укажите найденное значение в:
+For a permanent setup, put the detected value into:
 
 ```text
 ~/.config/cinnamon-layout-switch-release.conf
 ```
 
-Например:
+For example:
 
 ```bash
 KB_LAYOUT_SWITCH_KEYBOARD_ID=8
 ```
 
-Если имя клавиатуры другое, можно вместо `id` переопределить её имя:
+If the keyboard name is different, you can override the name instead of the ID:
 
 ```bash
 KB_LAYOUT_SWITCH_KEYBOARD_NAME='AT Translated Set 2 keyboard'
 ```
 
-Listener читает этот файл и при автозапуске тоже, поэтому отдельная правка `.desktop` не нужна.
+The listener reads this file during autostart as well, so there is no need to edit the `.desktop` file by hand.
 
-Переменные окружения по-прежнему можно использовать для временной ручной проверки, но для постоянной настройки лучше менять именно конфиг-файл.
+Environment variables can still be used for temporary manual tests, but for permanent setup it is better to edit the config file itself.
 
-## Использование `cinnamon-xkb-switch`
+## Using `cinnamon-xkb-switch`
 
-Примеры:
+Examples:
 
 ```bash
 cinnamon-xkb-switch
@@ -349,43 +351,43 @@ cinnamon-xkb-switch -s ru
 cinnamon-xkb-switch -s 0
 ```
 
-## Почему используется не прямое переключение XKB, а D-Bus Cinnamon
+## Why Cinnamon D-Bus Is Used Instead of Direct XKB Switching
 
-Потому что на современных версиях Cinnamon прямое переключение XKB в обход Cinnamon может привести к рассинхрону:
+On modern Cinnamon versions, switching XKB directly outside Cinnamon can lead to desynchronization:
 
-- XKB уже переключился;
-- Cinnamon всё ещё считает активной старую раскладку;
-- флаг в панели и реальный ввод не совпадают.
+- XKB already switched;
+- Cinnamon still thinks the old layout is active;
+- the panel flag and actual text input do not match.
 
-Переключение через `org.Cinnamon.ActivateInputSourceIndex` этого не ломает, потому что состояние меняется там, где Cinnamon сам ожидает его менять.
+Switching through `org.Cinnamon.ActivateInputSourceIndex` avoids this because the state changes exactly where Cinnamon expects it to change.
 
-## Известные особенности
+## Known Notes
 
-- У некоторых версий Cinnamon при смене раскладки флаг в панели может на долю секунды исчезать и появляться заново. Это выглядит как визуальное мигание апплета. По наблюдениям, это связано с самим keyboard applet Cinnamon, а не с данным listener.
-- Скрипт рассчитан на переключение по двум модификаторам. Если нужна более сложная логика, её можно расширить в `kb-layout-switch-release.sh`.
-- Listener использует `xinput test`, поэтому должен работать внутри X11-сессии пользователя.
+- On some Cinnamon versions, the panel flag may disappear for a fraction of a second and then reappear during layout switching. This looks like a flicker in the keyboard applet. Based on observation, this seems to be caused by Cinnamon's own keyboard applet rather than by this listener.
+- The script is designed for switching based on two modifiers. If you need more complex logic, you can extend `kb-layout-switch-release.sh`.
+- The listener uses `xinput test`, so it must run inside the user's X11 session.
 
-## Удаление
+## Uninstall
 
 ```bash
 chmod +x uninstall.sh
 ./uninstall.sh
 ```
 
-Для удаления системной установки:
+To remove a system-wide installation:
 
 ```bash
 ./uninstall.sh --system
 ```
 
-Если нужно удалить и конфиг пользователя тоже:
+If you also want to remove the user config:
 
 ```bash
 ./uninstall.sh --purge-config
 ```
 
-По умолчанию `uninstall.sh` удаляет helper, listener и автозапуск, но оставляет `~/.config/cinnamon-layout-switch-release.conf`, чтобы не терять пользовательские настройки.
+By default, `uninstall.sh` removes the helper, listener, and autostart entry, but leaves `~/.config/cinnamon-layout-switch-release.conf` in place so that user settings are not lost unintentionally.
 
-## Лицензия
+## License
 
-Проект распространяется по лицензии MIT. Это означает, что код можно свободно использовать, изменять, публиковать, встраивать в другие проекты и распространять дальше, включая коммерческое использование.
+The project is released under the MIT license. This means the code can be used, modified, published, embedded into other projects, and redistributed freely, including for commercial use.
