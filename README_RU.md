@@ -220,7 +220,7 @@ $HOME/.local/bin/kb-layout-switch-release.sh
 
 Файл `~/.config/cinnamon-layout-switch-release.conf` создаётся автоматически при установке. Listener читает его и при ручном запуске, и при запуске через автозагрузку.
 
-Если раскладка не переключается, сначала найдите нужный `keyboard id`:
+Если раскладка не переключается, сначала найдите нужный keyboard ID:
 
 ```bash
 xinput list --short
