@@ -48,9 +48,9 @@
 
 ### 2. Listener `kb-layout-switch-release.sh`
 
-Это bash-скрипт, который слушает `xinput test`, отслеживает последовательности нажатия и отпускания модификаторов и на отпускании переключает раскладку напрямую через Cinnamon D-Bus с помощью `gdbus`.
+Это bash-скрипт, который слушает `xinput test`, отслеживает последовательности нажатия и отпускания модификаторов и на отпускании просит Cinnamon выполнить собственное штатное modifier-based переключение через `gdbus` и `org.Cinnamon.Eval`.
 
-Отдельный helper `cinnamon-xkb-switch` остаётся доступным как самостоятельный CLI. Fallback на него теперь по умолчанию выключен и включается только явной настройкой в конфиге listener'а.
+Если этот быстрый путь не сработает, listener всё ещё может откатиться к публичному D-Bus API input sources Cinnamon, а затем, при явном включении, и к отдельному helper `cinnamon-xkb-switch`. Fallback на helper по умолчанию выключен.
 
 Поддерживаются последовательности:
 
@@ -82,7 +82,7 @@
 
 - используется Cinnamon 6.6 или новее;
 - используется X11, а не Wayland;
-- в сессионном D-Bus доступен интерфейс `org.Cinnamon` с методами `GetInputSources` и `ActivateInputSourceIndex`;
+- в сессионном D-Bus доступен интерфейс `org.Cinnamon` с методами `Eval`, `GetInputSources` и `ActivateInputSourceIndex`;
 - переключение раскладки через штатный `Alt+Shift` или `Ctrl+Shift` конфликтует с другими хоткеями.
 
 Поэтому проект не ограничен только Linux Mint как дистрибутивом. Он должен быть применим и в других системах, где есть такой же Cinnamon и X11. С высокой вероятностью это может быть полезно для:
@@ -128,7 +128,7 @@
 - `install.sh` — установка в `~/.local/bin` по умолчанию и создание автозапуска в домашней директории пользователя.
 - `uninstall.sh` — удаление установленных файлов.
 
-По умолчанию listener использует `gdbus` для более низкой задержки и не использует Python helper как fallback. Если fallback всё же нужен, его можно явно включить через `KB_LAYOUT_SWITCH_ENABLE_HELPER_FALLBACK=1` в конфиге. Путь к helper по-прежнему можно переопределить через `LAYOUT_SWITCH_CMD`.
+По умолчанию listener сначала использует `gdbus` с `org.Cinnamon.Eval`, чтобы вызвать собственный путь Cinnamon `_modifiersSwitcher(false)` с меньшей задержкой. Если это не сработает, он может откатиться к публичному API `GetInputSources` / `ActivateInputSourceIndex`, и только затем к Python helper, если вы явно включите `KB_LAYOUT_SWITCH_ENABLE_HELPER_FALLBACK=1` в конфиге. Путь к helper по-прежнему можно переопределить через `LAYOUT_SWITCH_CMD`.
 
 ## Требования
 
@@ -370,7 +370,7 @@ cinnamon-xkb-switch -s 0
 - Cinnamon всё ещё считает активной старую раскладку;
 - флаг в панели и реальный ввод не совпадают.
 
-Переключение через `org.Cinnamon.ActivateInputSourceIndex` этого не ломает, потому что состояние меняется там, где Cinnamon сам ожидает его менять.
+Теперь listener сначала просит Cinnamon выполнить собственный штатный modifier switcher через `org.Cinnamon.Eval`, то есть максимально близко к встроенному hotkey-пути. Если это недоступно, он откатывается к `org.Cinnamon.ActivateInputSourceIndex`, что тоже не ломает синхронизацию, потому что состояние меняется там, где Cinnamon сам ожидает его менять.
 
 ## Известные особенности
 

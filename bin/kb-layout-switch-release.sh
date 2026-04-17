@@ -7,6 +7,7 @@ readonly CONFIG_FILE="${KB_LAYOUT_SWITCH_CONFIG:-$HOME/.config/cinnamon-layout-s
 readonly DBUS_DEST="org.Cinnamon"
 readonly DBUS_OBJECT_PATH="/org/Cinnamon"
 readonly DBUS_INTERFACE="org.Cinnamon"
+readonly NEXT_SWITCHER_JS="imports.ui.keyboardManager.getInputSourceManager()._modifiersSwitcher(false)"
 
 load_config() {
     if [[ -f "$CONFIG_FILE" ]]; then
@@ -314,9 +315,24 @@ switch_layout_gdbus() {
         "$next_index" >/dev/null 2>&1
 }
 
+switch_layout_eval() {
+    "$GDBUS_CMD" call --session \
+        --dest "$DBUS_DEST" \
+        --object-path "$DBUS_OBJECT_PATH" \
+        --method "$DBUS_INTERFACE.Eval" \
+        "$NEXT_SWITCHER_JS" >/dev/null 2>&1
+}
+
 switch_layout() {
-    if [[ -n "$GDBUS_CMD" ]] && switch_layout_gdbus; then
-        return 0
+    if [[ -n "$GDBUS_CMD" ]]; then
+        if switch_layout_eval; then
+            return 0
+        fi
+
+        log_debug "Eval-based switch failed, trying public D-Bus API"
+        if switch_layout_gdbus; then
+            return 0
+        fi
     fi
 
     if [[ -n "$LAYOUT_SWITCH_CMD" ]]; then
@@ -374,7 +390,7 @@ acquire_lock
 log_debug "Using config file $CONFIG_FILE"
 log_debug "Listening on keyboard id $KEYBOARD_ID"
 if [[ -n "$GDBUS_CMD" ]]; then
-    log_debug "Using direct gdbus backend: $GDBUS_CMD"
+    log_debug "Using Cinnamon Eval backend via gdbus: $GDBUS_CMD"
 elif [[ -n "$LAYOUT_SWITCH_CMD" ]]; then
     log_debug "Using helper backend: $LAYOUT_SWITCH_CMD"
 fi
