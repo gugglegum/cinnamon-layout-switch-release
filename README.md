@@ -48,7 +48,9 @@ In other words, the layout is changed through the same high-level mechanism used
 
 ### 2. `kb-layout-switch-release.sh` listener
 
-This Bash script listens to `xinput test`, tracks modifier key press and release sequences, and only calls `cinnamon-xkb-switch -n` on key release.
+This Bash script listens to `xinput test`, tracks modifier key press and release sequences, and on key release switches the layout directly through Cinnamon D-Bus using `gdbus`.
+
+The standalone `cinnamon-xkb-switch` helper remains available as a separate CLI and as a fallback path, but it is no longer the default hot path used by the listener.
 
 Supported sequences:
 
@@ -120,13 +122,13 @@ This solution is not intended for:
 ## Repository Contents
 
 - `bin/cinnamon-xkb-switch` — CLI tool for reading and switching the layout through Cinnamon D-Bus.
-- `bin/kb-layout-switch-release.sh` — listener that reacts to `Alt+Shift` and `Ctrl+Shift` on key release.
+- `bin/kb-layout-switch-release.sh` — listener that reacts to `Alt+Shift` and `Ctrl+Shift` on key release and talks to Cinnamon through `gdbus`.
 - `config/cinnamon-layout-switch-release.conf` — template for the per-user listener config file.
 - `autostart/kb-layout-switch-release.desktop.in` — autostart template.
 - `install.sh` — installs into `~/.local/bin` by default and creates autostart files in the user's home directory.
 - `uninstall.sh` — removes installed files.
 
-By default, the listener looks for `cinnamon-xkb-switch` next to itself in the same directory. If needed, the path can be overridden with `LAYOUT_SWITCH_CMD` in the config file.
+By default, the listener uses `gdbus` for lower-latency switching and only falls back to `cinnamon-xkb-switch` if needed. The helper path can still be overridden with `LAYOUT_SWITCH_CMD` in the config file.
 
 ## Requirements
 
@@ -134,6 +136,7 @@ By default, the listener looks for `cinnamon-xkb-switch` next to itself in the s
 - X11
 - `python3`
 - `python3-gi`
+- `gdbus`
 - `xinput`
 - `bash`
 - `flock`
@@ -147,7 +150,7 @@ Below is the main installation flow.
 
 ### Step 1. Make sure the requirements are present
 
-You need Cinnamon, X11, `python3`, `python3-gi`, `xinput`, `bash`, `flock`, and access to the user session D-Bus.
+You need Cinnamon, X11, `python3`, `python3-gi`, `gdbus`, `xinput`, `bash`, `flock`, and access to the user session D-Bus.
 
 ### Step 2. Run the installer
 

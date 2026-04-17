@@ -4,6 +4,9 @@
 
 readonly SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 readonly CONFIG_FILE="${KB_LAYOUT_SWITCH_CONFIG:-$HOME/.config/cinnamon-layout-switch-release.conf}"
+readonly DBUS_DEST="org.Cinnamon"
+readonly DBUS_OBJECT_PATH="/org/Cinnamon"
+readonly DBUS_INTERFACE="org.Cinnamon"
 
 load_config() {
     if [[ -f "$CONFIG_FILE" ]]; then
@@ -25,6 +28,11 @@ readonly KEY_LEFT_SHIFT=50
 readonly KEY_RIGHT_CTRL=105
 readonly KEY_RIGHT_ALT=108
 readonly KEY_RIGHT_SHIFT=62
+
+source_tuples=()
+tuple_fields=()
+source_indexes=()
+current_source_pos=-1
 
 switch_sequences=(
     "Ctrl_Down Shift_Down Ctrl_Up"
@@ -65,6 +73,16 @@ resolve_layout_switch_cmd() {
     return 1
 }
 
+resolve_gdbus_cmd() {
+    if command -v gdbus >/dev/null 2>&1; then
+        command -v gdbus
+        return 0
+    fi
+
+    echo "Cannot find gdbus." >&2
+    return 1
+}
+
 acquire_lock() {
     exec 9>"$LOCK_FILE"
     if ! flock -n 9; then
@@ -97,6 +115,224 @@ resolve_keyboard_id() {
     return 1
 }
 
+trim_whitespace() {
+    local value="$1"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    printf '%s' "$value"
+}
+
+extract_source_tuples() {
+    local raw="$1"
+    local char=""
+    local current=""
+    local in_quote=0
+    local escape=0
+    local bracket_depth=0
+    local paren_depth=0
+    local i
+
+    source_tuples=()
+
+    for ((i = 0; i < ${#raw}; i++)); do
+        char="${raw:i:1}"
+
+        if (( escape )); then
+            if (( paren_depth > 0 )); then
+                current+="$char"
+            fi
+            escape=0
+            continue
+        fi
+
+        if [[ "$char" == "\\" ]]; then
+            if (( paren_depth > 0 )); then
+                current+="$char"
+            fi
+            escape=1
+            continue
+        fi
+
+        if [[ "$char" == "'" ]]; then
+            (( in_quote = 1 - in_quote ))
+            if (( paren_depth > 0 )); then
+                current+="$char"
+            fi
+            continue
+        fi
+
+        if (( in_quote )); then
+            if (( paren_depth > 0 )); then
+                current+="$char"
+            fi
+            continue
+        fi
+
+        case "$char" in
+            '[')
+                (( bracket_depth++ ))
+                ;;
+            ']')
+                (( bracket_depth-- ))
+                ;;
+            '(')
+                if (( bracket_depth > 0 )); then
+                    if (( paren_depth == 0 )); then
+                        current=""
+                    fi
+                    (( paren_depth++ ))
+                    current+="$char"
+                fi
+                ;;
+            ')')
+                if (( paren_depth > 0 )); then
+                    current+="$char"
+                    (( paren_depth-- ))
+                    if (( paren_depth == 0 )); then
+                        source_tuples+=("$current")
+                        current=""
+                    fi
+                fi
+                ;;
+            *)
+                if (( paren_depth > 0 )); then
+                    current+="$char"
+                fi
+                ;;
+        esac
+    done
+}
+
+split_tuple_fields() {
+    local tuple="$1"
+    local inner="${tuple:1:${#tuple}-2}"
+    local char=""
+    local current=""
+    local in_quote=0
+    local escape=0
+    local i
+
+    tuple_fields=()
+
+    for ((i = 0; i < ${#inner}; i++)); do
+        char="${inner:i:1}"
+
+        if (( escape )); then
+            current+="$char"
+            escape=0
+            continue
+        fi
+
+        if [[ "$char" == "\\" ]]; then
+            current+="$char"
+            escape=1
+            continue
+        fi
+
+        if [[ "$char" == "'" ]]; then
+            (( in_quote = 1 - in_quote ))
+            current+="$char"
+            continue
+        fi
+
+        if (( !in_quote )) && [[ "$char" == "," ]]; then
+            tuple_fields+=("$(trim_whitespace "$current")")
+            current=""
+            continue
+        fi
+
+        current+="$char"
+    done
+
+    tuple_fields+=("$(trim_whitespace "$current")")
+}
+
+load_cinnamon_sources() {
+    local raw=""
+    local tuple=""
+    local index=""
+    local current_flag=""
+    local i
+
+    raw="$("$GDBUS_CMD" call --session \
+        --dest "$DBUS_DEST" \
+        --object-path "$DBUS_OBJECT_PATH" \
+        --method "$DBUS_INTERFACE.GetInputSources" 2>/dev/null)" || return 1
+
+    extract_source_tuples "$raw"
+    if [[ ${#source_tuples[@]} -eq 0 ]]; then
+        return 1
+    fi
+
+    source_indexes=()
+    current_source_pos=-1
+
+    for ((i = 0; i < ${#source_tuples[@]}; i++)); do
+        tuple="${source_tuples[i]}"
+        split_tuple_fields "$tuple"
+        if [[ ${#tuple_fields[@]} -lt 12 ]]; then
+            return 1
+        fi
+
+        index="$(trim_whitespace "${tuple_fields[2]}")"
+        current_flag="$(trim_whitespace "${tuple_fields[11]}")"
+
+        source_indexes+=("$index")
+        if [[ "$current_flag" == "true" ]]; then
+            current_source_pos=$i
+        fi
+    done
+
+    [[ $current_source_pos -ge 0 ]]
+}
+
+switch_layout_gdbus() {
+    local next_pos=0
+    local next_index=""
+
+    load_cinnamon_sources || return 1
+
+    next_pos=$(((current_source_pos + 1) % ${#source_indexes[@]}))
+    next_index="${source_indexes[next_pos]}"
+
+    "$GDBUS_CMD" call --session \
+        --dest "$DBUS_DEST" \
+        --object-path "$DBUS_OBJECT_PATH" \
+        --method "$DBUS_INTERFACE.ActivateInputSourceIndex" \
+        "$next_index" >/dev/null 2>&1
+}
+
+switch_layout() {
+    if [[ -n "$GDBUS_CMD" ]] && switch_layout_gdbus; then
+        return 0
+    fi
+
+    if [[ -n "$LAYOUT_SWITCH_CMD" ]]; then
+        log_debug "Falling back to cinnamon-xkb-switch helper"
+        "$LAYOUT_SWITCH_CMD" -n
+        return $?
+    fi
+
+    return 1
+}
+
+map_event() {
+    local event_type="$1"
+    local keycode="$2"
+
+    case "$event_type:$keycode" in
+        press:$KEY_LEFT_CTRL|press:$KEY_RIGHT_CTRL) printf '%s\n' "Ctrl_Down" ;;
+        release:$KEY_LEFT_CTRL|release:$KEY_RIGHT_CTRL) printf '%s\n' "Ctrl_Up" ;;
+        press:$KEY_LEFT_ALT|press:$KEY_RIGHT_ALT) printf '%s\n' "Alt_Down" ;;
+        release:$KEY_LEFT_ALT|release:$KEY_RIGHT_ALT) printf '%s\n' "Alt_Up" ;;
+        press:$KEY_LEFT_SHIFT|press:$KEY_RIGHT_SHIFT) printf '%s\n' "Shift_Down" ;;
+        release:$KEY_LEFT_SHIFT|release:$KEY_RIGHT_SHIFT) printf '%s\n' "Shift_Up" ;;
+        press:*) printf '%s\n' "Other_Down" ;;
+        release:*) printf '%s\n' "Other_Up" ;;
+        *) return 1 ;;
+    esac
+}
+
 check_sequence() {
     if [[ ${#buffer[@]} -ne 3 ]]; then
         return
@@ -107,7 +343,7 @@ check_sequence() {
             log_debug "--- KEYBOARD SWITCH ---"
             buffer=()
 
-            if ! "$LAYOUT_SWITCH_CMD" -n; then
+            if ! switch_layout; then
                 echo "Layout switch failed" >&2
             fi
             return
@@ -115,42 +351,29 @@ check_sequence() {
     done
 }
 
-readonly LAYOUT_SWITCH_CMD="$(resolve_layout_switch_cmd)" || exit 1
+readonly GDBUS_CMD="$(resolve_gdbus_cmd 2>/dev/null || true)"
+readonly LAYOUT_SWITCH_CMD="$(resolve_layout_switch_cmd 2>/dev/null || true)"
+if [[ -z "$GDBUS_CMD" && -z "$LAYOUT_SWITCH_CMD" ]]; then
+    echo "Cannot find gdbus or cinnamon-xkb-switch." >&2
+    exit 1
+fi
 readonly KEYBOARD_ID="$(resolve_keyboard_id)" || exit 1
 acquire_lock
 log_debug "Using config file $CONFIG_FILE"
 log_debug "Listening on keyboard id $KEYBOARD_ID"
+if [[ -n "$GDBUS_CMD" ]]; then
+    log_debug "Using direct gdbus backend: $GDBUS_CMD"
+elif [[ -n "$LAYOUT_SWITCH_CMD" ]]; then
+    log_debug "Using helper backend: $LAYOUT_SWITCH_CMD"
+fi
 
 while read -r line; do
+    event=""
     log_debug "$line"
 
-    event_type=$(echo "$line" | awk '{print $2}')
-    keycode=$(echo "$line" | awk '{print $3}')
-
-    event=""
-    if [[ $event_type == "press" ]]; then
-        if [[ $keycode == $KEY_LEFT_CTRL || $keycode == $KEY_RIGHT_CTRL ]]; then
-            event="Ctrl_Down"
-        elif [[ $keycode == $KEY_LEFT_ALT || $keycode == $KEY_RIGHT_ALT ]]; then
-            event="Alt_Down"
-        elif [[ $keycode == $KEY_LEFT_SHIFT || $keycode == $KEY_RIGHT_SHIFT ]]; then
-            event="Shift_Down"
-        else
-            event="Other_Down"
-        fi
-    elif [[ $event_type == "release" ]]; then
-        if [[ $keycode == $KEY_LEFT_CTRL || $keycode == $KEY_RIGHT_CTRL ]]; then
-            event="Ctrl_Up"
-        elif [[ $keycode == $KEY_LEFT_ALT || $keycode == $KEY_RIGHT_ALT ]]; then
-            event="Alt_Up"
-        elif [[ $keycode == $KEY_LEFT_SHIFT || $keycode == $KEY_RIGHT_SHIFT ]]; then
-            event="Shift_Up"
-        else
-            event="Other_Up"
-        fi
-    fi
-
-    if [[ -z "$event" ]]; then
+    if [[ "$line" =~ ^key[[:space:]]+(press|release)[[:space:]]+([0-9]+)$ ]]; then
+        event="$(map_event "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}")" || continue
+    else
         continue
     fi
 
