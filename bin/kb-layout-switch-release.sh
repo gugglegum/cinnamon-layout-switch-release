@@ -21,6 +21,7 @@ readonly KEYBOARD_NAME="${KB_LAYOUT_SWITCH_KEYBOARD_NAME:-AT Translated Set 2 ke
 readonly FALLBACK_KEYBOARD_NAME="${KB_LAYOUT_SWITCH_FALLBACK_KEYBOARD_NAME:-Virtual core keyboard}"
 readonly DEBUG="${KB_LAYOUT_SWITCH_DEBUG:-0}"
 readonly LOCK_FILE="${KB_LAYOUT_SWITCH_LOCK_FILE:-${XDG_RUNTIME_DIR:-/tmp}/kb-layout-switch-release.lock}"
+readonly HELPER_FALLBACK_ENABLED="${KB_LAYOUT_SWITCH_ENABLE_HELPER_FALLBACK:-0}"
 
 readonly KEY_LEFT_CTRL=37
 readonly KEY_LEFT_ALT=64
@@ -53,7 +54,18 @@ log_debug() {
     fi
 }
 
+helper_fallback_enabled() {
+    case "${HELPER_FALLBACK_ENABLED,,}" in
+        1|yes|true|on) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 resolve_layout_switch_cmd() {
+    if ! helper_fallback_enabled; then
+        return 1
+    fi
+
     if [[ -n "${LAYOUT_SWITCH_CMD:-}" ]]; then
         printf '%s\n' "$LAYOUT_SWITCH_CMD"
         return 0
@@ -354,7 +366,7 @@ check_sequence() {
 readonly GDBUS_CMD="$(resolve_gdbus_cmd 2>/dev/null || true)"
 readonly LAYOUT_SWITCH_CMD="$(resolve_layout_switch_cmd 2>/dev/null || true)"
 if [[ -z "$GDBUS_CMD" && -z "$LAYOUT_SWITCH_CMD" ]]; then
-    echo "Cannot find gdbus or cinnamon-xkb-switch." >&2
+    echo "Cannot find gdbus. To allow helper fallback, set KB_LAYOUT_SWITCH_ENABLE_HELPER_FALLBACK=1 and install cinnamon-xkb-switch." >&2
     exit 1
 fi
 readonly KEYBOARD_ID="$(resolve_keyboard_id)" || exit 1
@@ -365,6 +377,12 @@ if [[ -n "$GDBUS_CMD" ]]; then
     log_debug "Using direct gdbus backend: $GDBUS_CMD"
 elif [[ -n "$LAYOUT_SWITCH_CMD" ]]; then
     log_debug "Using helper backend: $LAYOUT_SWITCH_CMD"
+fi
+
+if helper_fallback_enabled; then
+    log_debug "Helper fallback is enabled"
+else
+    log_debug "Helper fallback is disabled"
 fi
 
 while read -r line; do

@@ -50,7 +50,7 @@ In other words, the layout is changed through the same high-level mechanism used
 
 This Bash script listens to `xinput test`, tracks modifier key press and release sequences, and on key release switches the layout directly through Cinnamon D-Bus using `gdbus`.
 
-The standalone `cinnamon-xkb-switch` helper remains available as a separate CLI and as a fallback path, but it is no longer the default hot path used by the listener.
+The standalone `cinnamon-xkb-switch` helper remains available as a separate CLI. Fallback to that helper is now disabled by default and can be enabled explicitly through the listener config if needed.
 
 Supported sequences:
 
@@ -128,7 +128,7 @@ This solution is not intended for:
 - `install.sh` — installs into `~/.local/bin` by default and creates autostart files in the user's home directory.
 - `uninstall.sh` — removes installed files.
 
-By default, the listener uses `gdbus` for lower-latency switching and only falls back to `cinnamon-xkb-switch` if needed. The helper path can still be overridden with `LAYOUT_SWITCH_CMD` in the config file.
+By default, the listener uses `gdbus` for lower-latency switching and does not use the Python helper as a fallback. If you explicitly want helper fallback, enable `KB_LAYOUT_SWITCH_ENABLE_HELPER_FALLBACK=1` in the config file. The helper path can still be overridden with `LAYOUT_SWITCH_CMD`.
 
 ## Requirements
 
@@ -236,6 +236,14 @@ KB_LAYOUT_SWITCH_KEYBOARD_ID=8
 ```
 
 After editing the config, restart the listener or simply log out and back in.
+
+If you explicitly want to allow fallback to the Python helper, you can add:
+
+```bash
+KB_LAYOUT_SWITCH_ENABLE_HELPER_FALLBACK=1
+```
+
+This is disabled by default.
 
 ## What `install.sh` Does
 
