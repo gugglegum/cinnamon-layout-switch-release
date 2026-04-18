@@ -31,26 +31,9 @@ Because of that, this repository is useful not only as a way to move switching t
 
 ## How It Works
 
-The solution has two parts.
-
-### 1. `cinnamon-xkb-switch` CLI helper
-
-This is a small Python script that switches the layout not by changing XKB or IBus directly, but through Cinnamon's own D-Bus API:
-
-- `org.Cinnamon.GetInputSources`
-- `org.Cinnamon.ActivateInputSourceIndex`
-
-In other words, the layout is changed through the same high-level mechanism used by Cinnamon itself. This means:
-
-- the actual layout changes correctly;
-- the panel indicator updates too;
-- Cinnamon and XKB do not drift out of sync.
-
-### 2. `kb-layout-switch-release.sh` listener
+The solution is built around a single listener script: `kb-layout-switch-release.sh`.
 
 This Bash script listens to `xinput test`, tracks modifier key press and release sequences, and on key release asks Cinnamon to perform its own built-in modifier-based layout switch through `gdbus` and `org.Cinnamon.Eval`.
-
-If that fast path fails, the listener can still fall back to Cinnamon's public input source D-Bus API, and optionally to the standalone `cinnamon-xkb-switch` helper. Helper fallback is disabled by default and can be enabled explicitly through the listener config if needed.
 
 Supported sequences:
 
@@ -82,7 +65,7 @@ This implementation is intended for systems where all of the following are true:
 
 - Cinnamon 6.6 or newer is used;
 - the session is X11, not Wayland;
-- the session D-Bus provides `org.Cinnamon` with `Eval`, `GetInputSources`, and `ActivateInputSourceIndex`;
+- the session D-Bus provides `org.Cinnamon` with `Eval`;
 - the built-in `Alt+Shift` or `Ctrl+Shift` layout switching conflicts with other shortcuts or behaves unreliably.
 
 So the project is not limited strictly to Linux Mint as a distribution. It should also apply to other systems using the same Cinnamon stack on X11. It is likely useful on:
@@ -121,21 +104,16 @@ This solution is not intended for:
 
 ## Repository Contents
 
-- `bin/cinnamon-xkb-switch` — CLI tool for reading and switching the layout through Cinnamon D-Bus.
 - `bin/kb-layout-switch-release.sh` — listener that reacts to `Alt+Shift` and `Ctrl+Shift` on key release and talks to Cinnamon through `gdbus`.
 - `config/cinnamon-layout-switch-release.conf` — template for the per-user listener config file.
 - `autostart/kb-layout-switch-release.desktop.in` — autostart template.
 - `install.sh` — installs into `~/.local/bin` by default and creates autostart files in the user's home directory.
 - `uninstall.sh` — removes installed files.
 
-By default, the listener first uses `gdbus` with `org.Cinnamon.Eval` to call Cinnamon's own `_modifiersSwitcher(false)` path for lower latency. If that fails, it can still fall back to Cinnamon's public `GetInputSources` / `ActivateInputSourceIndex` API, and only then to the Python helper if you explicitly enable `KB_LAYOUT_SWITCH_ENABLE_HELPER_FALLBACK=1` in the config file. The helper path can still be overridden with `LAYOUT_SWITCH_CMD`.
-
 ## Requirements
 
 - Cinnamon
 - X11
-- `python3`
-- `python3-gi`
 - `gdbus`
 - `xinput`
 - `bash`
@@ -150,7 +128,7 @@ Below is the main installation flow.
 
 ### Step 1. Make sure the requirements are present
 
-You need Cinnamon, X11, `python3`, `python3-gi`, `gdbus`, `xinput`, `bash`, `flock`, and access to the user session D-Bus.
+You need Cinnamon, X11, `gdbus`, `xinput`, `bash`, `flock`, and access to the user session D-Bus.
 
 ### Step 2. Run the installer
 
@@ -163,7 +141,6 @@ chmod +x install.sh
 
 With the default user-local installation, this creates:
 
-- `~/.local/bin/cinnamon-xkb-switch`
 - `~/.local/bin/kb-layout-switch-release.sh`
 - `~/.config/cinnamon-layout-switch-release.conf`
 - `~/.config/autostart/kb-layout-switch-release.desktop`
@@ -237,17 +214,8 @@ KB_LAYOUT_SWITCH_KEYBOARD_ID=8
 
 After editing the config, restart the listener or simply log out and back in.
 
-If you explicitly want to allow fallback to the Python helper, you can add:
-
-```bash
-KB_LAYOUT_SWITCH_ENABLE_HELPER_FALLBACK=1
-```
-
-This is disabled by default.
-
 ## What `install.sh` Does
 
-- installs `cinnamon-xkb-switch`
 - installs the listener
 - creates the config file if it does not exist yet
 - creates the `.desktop` autostart entry
@@ -348,20 +316,6 @@ The listener reads this file during autostart as well, so there is no need to ed
 
 Environment variables can still be used for temporary manual tests, but for permanent setup it is better to edit the config file itself.
 
-## Using `cinnamon-xkb-switch`
-
-Examples:
-
-```bash
-cinnamon-xkb-switch
-cinnamon-xkb-switch -l
-cinnamon-xkb-switch -n
-cinnamon-xkb-switch --prev
-cinnamon-xkb-switch -s us
-cinnamon-xkb-switch -s ru
-cinnamon-xkb-switch -s 0
-```
-
 ## Why Cinnamon D-Bus Is Used Instead of Direct XKB Switching
 
 On modern Cinnamon versions, switching XKB directly outside Cinnamon can lead to desynchronization:
@@ -370,7 +324,7 @@ On modern Cinnamon versions, switching XKB directly outside Cinnamon can lead to
 - Cinnamon still thinks the old layout is active;
 - the panel flag and actual text input do not match.
 
-The listener now first asks Cinnamon to run its own built-in modifier switcher through `org.Cinnamon.Eval`, which is closer to how the native hotkey path works. If that is unavailable, it falls back to `org.Cinnamon.ActivateInputSourceIndex`, which still avoids desynchronization because the state changes exactly where Cinnamon expects it to change.
+The listener asks Cinnamon to run its own built-in modifier switcher through `org.Cinnamon.Eval`, which is closer to how the native hotkey path works and keeps the state change inside Cinnamon itself.
 
 ## Known Notes
 
@@ -397,7 +351,7 @@ If you also want to remove the user config:
 ./uninstall.sh --purge-config
 ```
 
-By default, `uninstall.sh` removes the helper, listener, and autostart entry, but leaves `~/.config/cinnamon-layout-switch-release.conf` in place so that user settings are not lost unintentionally.
+By default, `uninstall.sh` removes the listener and autostart entry, but leaves `~/.config/cinnamon-layout-switch-release.conf` in place so that user settings are not lost unintentionally.
 
 ## License
 

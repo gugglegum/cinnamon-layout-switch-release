@@ -75,17 +75,16 @@ while [ "$#" -gt 0 ]; do
     shift
 done
 
-HELPER_DST="$BIN_DIR/cinnamon-xkb-switch"
 LISTENER_DST="$BIN_DIR/kb-layout-switch-release.sh"
 AUTOSTART_FILE="$TARGET_HOME/.config/autostart/kb-layout-switch-release.desktop"
 CONFIG_FILE="$TARGET_HOME/.config/cinnamon-layout-switch-release.conf"
 
 case "$BIN_DIR" in
     "$TARGET_HOME"|"$TARGET_HOME"/*)
-        rm -f "$HELPER_DST" "$LISTENER_DST"
+        rm -f "$LISTENER_DST"
         ;;
     *)
-        run_as_root rm -f "$HELPER_DST" "$LISTENER_DST"
+        run_as_root rm -f "$LISTENER_DST"
         ;;
 esac
 
@@ -97,7 +96,6 @@ fi
 
 cat <<EOF
 Removed:
-  $HELPER_DST
   $LISTENER_DST
   $AUTOSTART_FILE
 EOF

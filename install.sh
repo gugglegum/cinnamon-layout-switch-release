@@ -3,7 +3,6 @@
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-HELPER_SRC="$SCRIPT_DIR/bin/cinnamon-xkb-switch"
 LISTENER_SRC="$SCRIPT_DIR/bin/kb-layout-switch-release.sh"
 DESKTOP_TEMPLATE="$SCRIPT_DIR/autostart/kb-layout-switch-release.desktop.in"
 CONFIG_TEMPLATE="$SCRIPT_DIR/config/cinnamon-layout-switch-release.conf"
@@ -154,7 +153,6 @@ if [ "$INTERACTIVE" -eq 1 ] && [ "$BIN_DIR_EXPLICIT" -eq 0 ]; then
     choose_bin_dir
 fi
 
-HELPER_DST="$BIN_DIR/cinnamon-xkb-switch"
 LISTENER_DST="$BIN_DIR/kb-layout-switch-release.sh"
 CONFIG_DIR="$TARGET_HOME/.config"
 CONFIG_FILE="$CONFIG_DIR/cinnamon-layout-switch-release.conf"
@@ -164,7 +162,6 @@ TMP_DESKTOP=$(mktemp)
 trap 'rm -f "$TMP_DESKTOP"' EXIT INT TERM
 
 install_dir "$BIN_DIR"
-install_file "$BIN_DIR" -m 755 "$HELPER_SRC" "$HELPER_DST"
 install_file "$BIN_DIR" -m 755 "$LISTENER_SRC" "$LISTENER_DST"
 
 install_dir "$CONFIG_DIR"
@@ -181,14 +178,13 @@ install -m 644 "$TMP_DESKTOP" "$AUTOSTART_FILE"
 
 if [ "$(id -u)" -eq 0 ]; then
     if path_is_under_target_home "$BIN_DIR"; then
-        chown "$TARGET_USER:$TARGET_USER" "$BIN_DIR" "$HELPER_DST" "$LISTENER_DST"
+        chown "$TARGET_USER:$TARGET_USER" "$BIN_DIR" "$LISTENER_DST"
     fi
     chown "$TARGET_USER:$TARGET_USER" "$CONFIG_DIR" "$CONFIG_FILE" "$AUTOSTART_DIR" "$AUTOSTART_FILE"
 fi
 
 cat <<EOF
 Installed:
-  $HELPER_DST
   $LISTENER_DST
   $CONFIG_FILE
   $AUTOSTART_FILE
@@ -205,10 +201,3 @@ Recommended next steps:
   4. Log out and log in again, or start the listener manually:
      $LISTENER_DST
 EOF
-
-if [ "$BIN_DIR" = "$DEFAULT_USER_BIN" ]; then
-    cat <<EOF
-  5. If "$DEFAULT_USER_BIN" is not yet in your PATH for the current shell, log in again before using:
-     $HELPER_DST
-EOF
-fi
