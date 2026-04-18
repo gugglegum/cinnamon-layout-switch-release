@@ -12,8 +12,8 @@ Scripts for Linux systems running the Cinnamon desktop environment that switch t
 In the standard Cinnamon/X11 layout-switching scheme, combinations such as `Alt+Shift` are usually handled by XKB itself. This is inconvenient when the same modifiers are also part of other shortcuts, for example:
 
 - `Alt+Shift+Tab`
-- `Alt+Shift` combined with custom IDE shortcuts
-- `Ctrl+Shift` actions in the terminal, editor, or browser
+- `Alt+Shift` + combined with custom IDE shortcuts
+- `Ctrl+Shift` + actions in the terminal, editor, or browser
 
 In older X11/XKB setups, the main problem was a direct conflict with such shortcuts: layout switching fired on key press and could intercept the combination before the application had a chance to handle it.
 
